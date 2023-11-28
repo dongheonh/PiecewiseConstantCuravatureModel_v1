@@ -1,0 +1,143 @@
+%{
+Author: Dongheon Han
+FREE Lab | 10/11/2023
+Version 1
+%}
+
+function [location_IMUs, location_IMUs_estimation_line, ...
+    location_IMUs_estimation_line_2, numb] = imu_proprioception_curvature(bezier)
+
+    % Mathematical constants
+    increment_size = 0.01;
+    
+    % Geometry of the soft robot
+    mount_point = [0; 0; 0];                                    % mounted position of soft robot
+    length_sg = [2, 2, 2, 2, 2, 2, 2, 2];                       % length of each sg (segment) of the soft robot
+    gradient_pt = zeros(3,1);                                   % gradient at each iteration
+    t = increment_size;                                         % initialization of the curve variable
+    gradient_pt_curve = gradient_pt;
+    
+    second_point = mount_point + gradient_pt * increment_size;  % first point on the curve (robot)             
+    first_point = zeros(3,1);                                   % second point on the curve (robot)
+    
+    points = [first_point, second_point];                       % 2 points matrix
+    
+    length = length_sg
+
+    % figure
+    scatter3(mount_point(1), mount_point(2),mount_point(3))     % mark the mount position on the plot
+    hold on
+    axis equal
+    
+    
+    %% Plot the curve and place the IMUs on the robot
+    % initialize the locations 
+    location_IMUs = zeros(3, length(length_sg));                % the exact location of the IMUs
+    gradient_IMUs = zeros(3, length(length_sg));                % the exact gradient of the IMUs
+    
+    for i = 1: length(length_sg)
+        seg_distance = 0;                                       % initialize segment distance at the starting point on each segment
+    
+        while (seg_distance < length_sg(i))
+            points(:, 1) = points(:, 2);                        % move old points (2nd column) to the 1st column
+            points(:, 2) = curvature_curve_drawer(t, bezier);        % update the 2nd column
+    
+            [gradient_xyz, seg_distance] = ...                  % CURVE's function: curve_dist_gradient_estimator
+                curve_dist_gradient_estimator...
+                (points(:, 2), points(:, 1), increment_size, seg_distance);
+            if t == 0.02
+               gradient_pt_curve = gradient_xyz;
+            end
+            
+            % Plot the pointscurve
+            plot_points = 1: 2;
+            plot3(points(1,plot_points), points(2,plot_points), ...
+                points(3,plot_points), '-','Color', 'black', 'LineWidth',1);
+    
+            t = t + increment_size;                             % increment t by increment_size
+        end
+    
+        location_IMUs(:, i) = points(:, 2);                     % save each IMU's location
+        gradient_IMUs(:, i) = gradient_xyz;                     % save each IMU's gradient
+        
+        % mark the location of the IMUs
+        scatter3(location_IMUs(1, i), location_IMUs(2, i), ...
+             location_IMUs(3, i),'o','k')
+    end
+    
+    %% Straight line assumption
+    second_point = mount_point + gradient_pt * increment_size;  % first point on the curve (robot)             
+    first_point = zeros(3,1);                                   % second point on the curve (robot)
+    points = [first_point, second_point];                       % 2 points matrix
+
+    location_IMUs_estimation_line = zeros(3,length(length_sg));
+    
+    for i = 1: length(length_sg)
+        seg_distance = 0;                                       % initialize segment distance at the starting point on each segment
+        gradient_IMU_ea = gradient_IMUs(:,i);                   % gradient at each IMU
+    
+        while (seg_distance < length_sg(i))
+            points(:, 1) = points(:, 2);                        % move old points (2nd column) to the 1st column
+            points(:, 2) = points(:, 2) + ...
+                gradient_IMU_ea * increment_size;               % update the 2nd column
+    
+            [~, seg_distance] = ...                  % CURVE's function: curve_dist_gradient_estimator
+                curve_dist_gradient_estimator...
+                (points(:, 2), points(:, 1), increment_size, seg_distance);
+            
+            % Plot the pointscurve
+            plot_points = 1: 2;
+            plot3(points(1,plot_points), points(2,plot_points), ...
+                points(3,plot_points), '-','Color', 'green', 'LineWidth',1);
+        end
+    
+        location_IMUs_estimation_line(:, i) = points(:, 2);     % save each IMU's location
+    
+        % mark the location of the IMUs
+        scatter3(location_IMUs_estimation_line(1, i), ...
+            location_IMUs_estimation_line(2, i), ...
+            location_IMUs_estimation_line(3, i), ...
+            'o','g')
+    end
+    
+    %% Constant Curvature assumption
+    % initialize the locations 
+    second_point = mount_point + gradient_pt * increment_size;  % first point on the curve (robot)             
+    first_point = zeros(3,1);                                   % second point on the curve (robot)
+    points = [first_point, second_point];                       % 2 points matrix
+    
+    location_IMUs_estimation_line_2 = zeros(3,length(length_sg));
+    gradient_IMUs_0 = [gradient_pt_curve gradient_IMUs];
+    
+    for i = 1: length(length_sg)
+        seg_distance = 0;                                       % initialize segment distance at the starting point on each segment
+    
+        while (seg_distance < length_sg(i))
+            s = seg_distance / length_sg(i);
+            gradient_IMU_ea_iter = ...                          % gradient at each iteration
+                (1 - s) * gradient_IMUs_0(:,i) ...
+                + s * gradient_IMUs_0(:,i + 1);                   
+            points(:, 1) = points(:, 2);                        % move old points (2nd column) to the 1st column
+            points(:, 2) = points(:, 2) + ...
+                gradient_IMU_ea_iter * increment_size;          % update the 2nd column
+    
+            [~, seg_distance] = ...                             % CURVE's function: curve_dist_gradient_estimator
+                curve_dist_gradient_estimator...
+                (points(:, 2), points(:, 1), increment_size, seg_distance);
+            
+            % Plot the pointscurve
+            plot_points = 1: 2;
+            plot3(points(1,plot_points), points(2,plot_points), ...
+                points(3,plot_points), '-','Color', 'red', 'LineWidth',1);
+    
+        end
+    
+        location_IMUs_estimation_line_2(:, i) = points(:, 2);     % save each IMU's location
+    
+        % mark the location of the IMUs
+        scatter3(location_IMUs_estimation_line_2(1, i), ...
+            location_IMUs_estimation_line_2(2, i), ...
+            location_IMUs_estimation_line_2(3, i), ...
+            'o','r')
+    end
+end
